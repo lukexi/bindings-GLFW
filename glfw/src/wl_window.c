@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.1 Wayland - www.glfw.org
+// GLFW 3.2 Wayland - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2014 Jonas Ådahl <jadahl@gmail.com>
 //
@@ -72,12 +72,12 @@ static const struct wl_shell_surface_listener shellSurfaceListener = {
     handlePopupDone
 };
 
-static GLboolean createSurface(_GLFWwindow* window,
-                               const _GLFWwndconfig* wndconfig)
+static GLFWbool createSurface(_GLFWwindow* window,
+                              const _GLFWwndconfig* wndconfig)
 {
     window->wl.surface = wl_compositor_create_surface(_glfw.wl.compositor);
     if (!window->wl.surface)
-        return GL_FALSE;
+        return GLFW_FALSE;
 
     wl_surface_set_user_data(window->wl.surface, window);
 
@@ -85,12 +85,12 @@ static GLboolean createSurface(_GLFWwindow* window,
                                              wndconfig->width,
                                              wndconfig->height);
     if (!window->wl.native)
-        return GL_FALSE;
+        return GLFW_FALSE;
 
     window->wl.shell_surface = wl_shell_get_shell_surface(_glfw.wl.shell,
                                                           window->wl.surface);
     if (!window->wl.shell_surface)
-        return GL_FALSE;
+        return GLFW_FALSE;
 
     wl_shell_surface_add_listener(window->wl.shell_surface,
                                   &shellSurfaceListener,
@@ -99,7 +99,7 @@ static GLboolean createSurface(_GLFWwindow* window,
     window->wl.width = wndconfig->width;
     window->wl.height = wndconfig->height;
 
-    return GL_TRUE;
+    return GLFW_TRUE;
 }
 
 static int
@@ -112,6 +112,43 @@ createTmpfileCloexec(char* tmpname)
         unlink(tmpname);
 
     return fd;
+}
+
+static void
+handleEvents(int timeout)
+{
+    struct wl_display* display = _glfw.wl.display;
+    struct pollfd fds[] = {
+        { wl_display_get_fd(display), POLLIN },
+    };
+
+    while (wl_display_prepare_read(display) != 0)
+        wl_display_dispatch_pending(display);
+
+    // If an error different from EAGAIN happens, we have likely been
+    // disconnected from the Wayland session, try to handle that the best we
+    // can.
+    if (wl_display_flush(display) < 0 && errno != EAGAIN)
+    {
+        _GLFWwindow* window = _glfw.windowListHead;
+        while (window)
+        {
+            _glfwInputWindowCloseRequest(window);
+            window = window->next;
+        }
+        wl_display_cancel_read(display);
+        return;
+    }
+
+    if (poll(fds, 1, timeout) > 0)
+    {
+        wl_display_read_events(display);
+        wl_display_dispatch_pending(display);
+    }
+    else
+    {
+        wl_display_cancel_read(display);
+    }
 }
 
 /*
@@ -150,7 +187,7 @@ createAnonymousFile(off_t size)
         return -1;
     }
 
-    name = malloc(strlen(path) + sizeof(template));
+    name = calloc(strlen(path) + sizeof(template), 1);
     strcpy(name, path);
     strcat(name, template);
 
@@ -170,6 +207,28 @@ createAnonymousFile(off_t size)
     return fd;
 }
 
+// Translates a GLFW standard cursor to a theme cursor name
+//
+static char *translateCursorShape(int shape)
+{
+    switch (shape)
+    {
+        case GLFW_ARROW_CURSOR:
+            return "left_ptr";
+        case GLFW_IBEAM_CURSOR:
+            return "xterm";
+        case GLFW_CROSSHAIR_CURSOR:
+            return "crosshair";
+        case GLFW_HAND_CURSOR:
+            return "grabbing";
+        case GLFW_HRESIZE_CURSOR:
+            return "sb_h_double_arrow";
+        case GLFW_VRESIZE_CURSOR:
+            return "sb_v_double_arrow";
+    }
+    return NULL;
+}
+
 //////////////////////////////////////////////////////////////////////////
 //////                       GLFW platform API                      //////
 //////////////////////////////////////////////////////////////////////////
@@ -179,11 +238,14 @@ int _glfwPlatformCreateWindow(_GLFWwindow* window,
                               const _GLFWctxconfig* ctxconfig,
                               const _GLFWfbconfig* fbconfig)
 {
-    if (!_glfwCreateContext(window, ctxconfig, fbconfig))
-        return GL_FALSE;
-
     if (!createSurface(window, wndconfig))
-        return GL_FALSE;
+        return GLFW_FALSE;
+
+    if (ctxconfig->api != GLFW_NO_API)
+    {
+        if (!_glfwCreateContext(window, ctxconfig, fbconfig))
+            return GLFW_FALSE;
+    }
 
     if (wndconfig->monitor)
     {
@@ -200,7 +262,7 @@ int _glfwPlatformCreateWindow(_GLFWwindow* window,
 
     window->wl.currentCursor = NULL;
 
-    return GL_TRUE;
+    return GLFW_TRUE;
 }
 
 void _glfwPlatformDestroyWindow(_GLFWwindow* window)
@@ -208,12 +270,12 @@ void _glfwPlatformDestroyWindow(_GLFWwindow* window)
     if (window == _glfw.wl.pointerFocus)
     {
         _glfw.wl.pointerFocus = NULL;
-        _glfwInputCursorEnter(window, GL_FALSE);
+        _glfwInputCursorEnter(window, GLFW_FALSE);
     }
     if (window == _glfw.wl.keyboardFocus)
     {
         _glfw.wl.keyboardFocus = NULL;
-        _glfwInputWindowFocus(window, GL_FALSE);
+        _glfwInputWindowFocus(window, GLFW_FALSE);
     }
 
     _glfwDestroyContext(window);
@@ -265,6 +327,20 @@ void _glfwPlatformSetWindowSize(_GLFWwindow* window, int width, int height)
     window->wl.height = height;
 }
 
+void _glfwPlatformSetWindowSizeLimits(_GLFWwindow* window,
+                                      int minwidth, int minheight,
+                                      int maxwidth, int maxheight)
+{
+    // TODO
+    fprintf(stderr, "_glfwPlatformSetWindowSizeLimits not implemented yet\n");
+}
+
+void _glfwPlatformSetWindowAspectRatio(_GLFWwindow* window, int numer, int denom)
+{
+    // TODO
+    fprintf(stderr, "_glfwPlatformSetWindowAspectRatio not implemented yet\n");
+}
+
 void _glfwPlatformGetFramebufferSize(_GLFWwindow* window, int* width, int* height)
 {
     _glfwPlatformGetWindowSize(window, width, height);
@@ -310,61 +386,29 @@ void _glfwPlatformHideWindow(_GLFWwindow* window)
 int _glfwPlatformWindowFocused(_GLFWwindow* window)
 {
     // TODO
-    return GL_FALSE;
+    return GLFW_FALSE;
 }
 
 int _glfwPlatformWindowIconified(_GLFWwindow* window)
 {
     // TODO
-    return GL_FALSE;
+    return GLFW_FALSE;
 }
 
 int _glfwPlatformWindowVisible(_GLFWwindow* window)
 {
     // TODO
-    return GL_FALSE;
+    return GLFW_FALSE;
 }
 
 void _glfwPlatformPollEvents(void)
 {
-    struct wl_display* display = _glfw.wl.display;
-    struct pollfd fds[] = {
-        { wl_display_get_fd(display), POLLIN },
-    };
-
-    while (wl_display_prepare_read(display) != 0)
-        wl_display_dispatch_pending(display);
-    wl_display_flush(display);
-    if (poll(fds, 1, 0) > 0)
-    {
-        wl_display_read_events(display);
-        wl_display_dispatch_pending(display);
-    }
-    else
-    {
-        wl_display_cancel_read(display);
-    }
+    handleEvents(0);
 }
 
 void _glfwPlatformWaitEvents(void)
 {
-    struct wl_display* display = _glfw.wl.display;
-    struct pollfd fds[] = {
-        { wl_display_get_fd(display), POLLIN },
-    };
-
-    while (wl_display_prepare_read(display) != 0)
-        wl_display_dispatch_pending(display);
-    wl_display_flush(display);
-    if (poll(fds, 1, -1) > 0)
-    {
-        wl_display_read_events(display);
-        wl_display_dispatch_pending(display);
-    }
-    else
-    {
-        wl_display_cancel_read(display);
-    }
+    handleEvents(-1);
 }
 
 void _glfwPlatformPostEmptyEvent(void)
@@ -374,8 +418,10 @@ void _glfwPlatformPostEmptyEvent(void)
 
 void _glfwPlatformGetCursorPos(_GLFWwindow* window, double* xpos, double* ypos)
 {
-    // TODO
-    fprintf(stderr, "_glfwPlatformGetCursorPos not implemented yet\n");
+    if (xpos)
+        *xpos = window->wl.cursorPosX;
+    if (ypos)
+        *ypos = window->wl.cursorPosY;
 }
 
 void _glfwPlatformSetCursorPos(_GLFWwindow* window, double x, double y)
@@ -385,9 +431,15 @@ void _glfwPlatformSetCursorPos(_GLFWwindow* window, double x, double y)
                     "Wayland: Cursor position setting not supported");
 }
 
-void _glfwPlatformApplyCursorMode(_GLFWwindow* window)
+void _glfwPlatformSetCursorMode(_GLFWwindow* window, int mode)
 {
     _glfwPlatformSetCursor(window, window->wl.currentCursor);
+}
+
+const char* _glfwPlatformGetKeyName(int key, int scancode)
+{
+    // TODO
+    return NULL;
 }
 
 int _glfwPlatformCreateCursor(_GLFWcursor* cursor,
@@ -406,7 +458,7 @@ int _glfwPlatformCreateCursor(_GLFWcursor* cursor,
         _glfwInputError(GLFW_PLATFORM_ERROR,
                         "Wayland: Creating a buffer file for %d B failed: %m\n",
                         length);
-        return GL_FALSE;
+        return GLFW_FALSE;
     }
 
     data = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -415,7 +467,7 @@ int _glfwPlatformCreateCursor(_GLFWcursor* cursor,
         _glfwInputError(GLFW_PLATFORM_ERROR,
                         "Wayland: Cursor mmap failed: %m\n");
         close(fd);
-        return GL_FALSE;
+        return GLFW_FALSE;
     }
 
     pool = wl_shm_create_pool(_glfw.wl.shm, fd, length);
@@ -443,24 +495,41 @@ int _glfwPlatformCreateCursor(_GLFWcursor* cursor,
     cursor->wl.height = image->height;
     cursor->wl.xhot = xhot;
     cursor->wl.yhot = yhot;
-    return GL_TRUE;
+    return GLFW_TRUE;
 }
 
 int _glfwPlatformCreateStandardCursor(_GLFWcursor* cursor, int shape)
 {
-    // TODO
-    fprintf(stderr, "_glfwPlatformCreateStandardCursor not implemented yet\n");
-    return GL_FALSE;
+    struct wl_cursor* standardCursor;
+
+    standardCursor = wl_cursor_theme_get_cursor(_glfw.wl.cursorTheme,
+                                                translateCursorShape(shape));
+    if (!standardCursor)
+    {
+        _glfwInputError(GLFW_PLATFORM_ERROR,
+                        "Wayland: Standard cursor \"%s\" not found",
+                        translateCursorShape(shape));
+        return GLFW_FALSE;
+    }
+
+    cursor->wl.image = standardCursor->images[0];
+    return GLFW_TRUE;
 }
 
 void _glfwPlatformDestroyCursor(_GLFWcursor* cursor)
 {
-    wl_buffer_destroy(cursor->wl.buffer);
+    // If it's a standard cursor we don't need to do anything here
+    if (cursor->wl.image)
+        return;
+
+    if (cursor->wl.buffer)
+        wl_buffer_destroy(cursor->wl.buffer);
 }
 
 void _glfwPlatformSetCursor(_GLFWwindow* window, _GLFWcursor* cursor)
 {
     struct wl_buffer* buffer;
+    struct wl_cursor* defaultCursor;
     struct wl_cursor_image* image;
     struct wl_surface* surface = _glfw.wl.cursorSurface;
 
@@ -476,9 +545,23 @@ void _glfwPlatformSetCursor(_GLFWwindow* window, _GLFWcursor* cursor)
 
     if (window->cursorMode == GLFW_CURSOR_NORMAL)
     {
-        if (cursor == NULL)
+        if (cursor)
+            image = cursor->wl.image;
+        else
         {
-            image = _glfw.wl.defaultCursor->images[0];
+            defaultCursor = wl_cursor_theme_get_cursor(_glfw.wl.cursorTheme,
+                                                       "left_ptr");
+            if (!defaultCursor)
+            {
+                _glfwInputError(GLFW_PLATFORM_ERROR,
+                                "Wayland: Standard cursor not found");
+                return;
+            }
+            image = defaultCursor->images[0];
+        }
+
+        if (image)
+        {
             buffer = wl_cursor_image_get_buffer(image);
             if (!buffer)
                 return;
@@ -520,5 +603,23 @@ const char* _glfwPlatformGetClipboardString(_GLFWwindow* window)
     // TODO
     fprintf(stderr, "_glfwPlatformGetClipboardString not implemented yet\n");
     return NULL;
+}
+
+
+//////////////////////////////////////////////////////////////////////////
+//////                        GLFW native API                       //////
+//////////////////////////////////////////////////////////////////////////
+
+GLFWAPI struct wl_display* glfwGetWaylandDisplay(void)
+{
+    _GLFW_REQUIRE_INIT_OR_RETURN(NULL);
+    return _glfw.wl.display;
+}
+
+GLFWAPI struct wl_surface* glfwGetWaylandWindow(GLFWwindow* handle)
+{
+    _GLFWwindow* window = (_GLFWwindow*) handle;
+    _GLFW_REQUIRE_INIT_OR_RETURN(NULL);
+    return window->wl.surface;
 }
 

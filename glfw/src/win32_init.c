@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.1 Win32 - www.glfw.org
+// GLFW 3.2 Win32 - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2002-2006 Marcus Geelnard
 // Copyright (c) 2006-2010 Camilla Berglund <elmindreda@elmindreda.org>
@@ -30,20 +30,22 @@
 #include <stdlib.h>
 #include <malloc.h>
 
-#ifdef __BORLANDC__
-// With the Borland C++ compiler, we want to disable FPU exceptions
-#include <float.h>
-#endif // __BORLANDC__
 
-
-#if defined(_GLFW_USE_OPTIMUS_HPG)
+#if defined(_GLFW_USE_HYBRID_HPG) || defined(_GLFW_USE_OPTIMUS_HPG)
 
 // Applications exporting this symbol with this value will be automatically
-// directed to the high-performance GPU on Nvidia Optimus systems
+// directed to the high-performance GPU on Nvidia Optimus systems with
+// up-to-date drivers
 //
-__declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
+__declspec(dllexport) DWORD NvOptimusEnablement = 1;
 
-#endif // _GLFW_USE_OPTIMUS_HPG
+// Applications exporting this symbol with this value will be automatically
+// directed to the high-performance GPU on AMD PowerXpress systems with
+// up-to-date drivers
+//
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+
+#endif // _GLFW_USE_HYBRID_HPG
 
 #if defined(_GLFW_BUILD_DLL)
 
@@ -58,14 +60,13 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
 
 // Load necessary libraries (DLLs)
 //
-static GLboolean initLibraries(void)
+static GLFWbool loadLibraries(void)
 {
-    _glfw.win32.winmm.instance = LoadLibraryW(L"winmm.dll");
+    _glfw.win32.winmm.instance = LoadLibraryA("winmm.dll");
     if (!_glfw.win32.winmm.instance)
     {
-        _glfwInputError(GLFW_PLATFORM_ERROR,
-                        "Win32: Failed to load winmm.dll");
-        return GL_FALSE;
+        _glfwInputError(GLFW_PLATFORM_ERROR, "Win32: Failed to load winmm.dll");
+        return GLFW_FALSE;
     }
 
     _glfw.win32.winmm.joyGetDevCaps = (JOYGETDEVCAPS_T)
@@ -77,38 +78,40 @@ static GLboolean initLibraries(void)
     _glfw.win32.winmm.timeGetTime = (TIMEGETTIME_T)
         GetProcAddress(_glfw.win32.winmm.instance, "timeGetTime");
 
-    if (!_glfw.win32.winmm.joyGetDevCaps ||
-        !_glfw.win32.winmm.joyGetPos ||
-        !_glfw.win32.winmm.joyGetPosEx ||
-        !_glfw.win32.winmm.timeGetTime)
+    _glfw.win32.user32.instance = LoadLibraryA("user32.dll");
+    if (!_glfw.win32.user32.instance)
     {
-        _glfwInputError(GLFW_PLATFORM_ERROR,
-                        "Win32: Failed to load winmm functions");
-        return GL_FALSE;
+        _glfwInputError(GLFW_PLATFORM_ERROR, "Win32: Failed to load user32.dll");
+        return GLFW_FALSE;
     }
 
-    _glfw.win32.user32.instance = LoadLibraryW(L"user32.dll");
-    if (_glfw.win32.user32.instance)
-    {
-        _glfw.win32.user32.SetProcessDPIAware = (SETPROCESSDPIAWARE_T)
-            GetProcAddress(_glfw.win32.user32.instance, "SetProcessDPIAware");
-        _glfw.win32.user32.ChangeWindowMessageFilterEx = (CHANGEWINDOWMESSAGEFILTEREX_T)
-            GetProcAddress(_glfw.win32.user32.instance, "ChangeWindowMessageFilterEx");
-    }
+    _glfw.win32.user32.SetProcessDPIAware = (SETPROCESSDPIAWARE_T)
+        GetProcAddress(_glfw.win32.user32.instance, "SetProcessDPIAware");
+    _glfw.win32.user32.ChangeWindowMessageFilterEx = (CHANGEWINDOWMESSAGEFILTEREX_T)
+        GetProcAddress(_glfw.win32.user32.instance, "ChangeWindowMessageFilterEx");
 
-    _glfw.win32.dwmapi.instance = LoadLibraryW(L"dwmapi.dll");
+    _glfw.win32.dwmapi.instance = LoadLibraryA("dwmapi.dll");
     if (_glfw.win32.dwmapi.instance)
     {
         _glfw.win32.dwmapi.DwmIsCompositionEnabled = (DWMISCOMPOSITIONENABLED_T)
             GetProcAddress(_glfw.win32.dwmapi.instance, "DwmIsCompositionEnabled");
+        _glfw.win32.dwmapi.DwmFlush = (DWMFLUSH_T)
+            GetProcAddress(_glfw.win32.dwmapi.instance, "DwmFlush");
     }
 
-    return GL_TRUE;
+    _glfw.win32.shcore.instance = LoadLibraryA("shcore.dll");
+    if (_glfw.win32.shcore.instance)
+    {
+        _glfw.win32.shcore.SetProcessDPIAwareness = (SETPROCESSDPIAWARENESS_T)
+            GetProcAddress(_glfw.win32.shcore.instance, "SetProcessDPIAwareness");
+    }
+
+    return GLFW_TRUE;
 }
 
 // Unload used libraries (DLLs)
 //
-static void terminateLibraries(void)
+static void freeLibraries(void)
 {
     if (_glfw.win32.winmm.instance)
         FreeLibrary(_glfw.win32.winmm.instance);
@@ -118,13 +121,19 @@ static void terminateLibraries(void)
 
     if (_glfw.win32.dwmapi.instance)
         FreeLibrary(_glfw.win32.dwmapi.instance);
+
+    if (_glfw.win32.shcore.instance)
+        FreeLibrary(_glfw.win32.shcore.instance);
 }
 
 // Create key code translation tables
 //
 static void createKeyTables(void)
 {
+    int scancode;
+
     memset(_glfw.win32.publicKeys, -1, sizeof(_glfw.win32.publicKeys));
+    memset(_glfw.win32.nativeKeys, -1, sizeof(_glfw.win32.nativeKeys));
 
     _glfw.win32.publicKeys[0x00B] = GLFW_KEY_0;
     _glfw.win32.publicKeys[0x002] = GLFW_KEY_1;
@@ -246,6 +255,34 @@ static void createKeyTables(void)
     _glfw.win32.publicKeys[0x11C] = GLFW_KEY_KP_ENTER;
     _glfw.win32.publicKeys[0x037] = GLFW_KEY_KP_MULTIPLY;
     _glfw.win32.publicKeys[0x04A] = GLFW_KEY_KP_SUBTRACT;
+
+    for (scancode = 0;  scancode < 512;  scancode++)
+    {
+        if (_glfw.win32.publicKeys[scancode] > 0)
+            _glfw.win32.nativeKeys[_glfw.win32.publicKeys[scancode]] = scancode;
+    }
+}
+
+// Creates a dummy window for behind-the-scenes work
+//
+static HWND createHelperWindow(void)
+{
+    HWND window = CreateWindowExW(WS_EX_OVERLAPPEDWINDOW,
+                                  _GLFW_WNDCLASSNAME,
+                                  L"GLFW helper window",
+                                  WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+                                  0, 0, 1, 1,
+                                  NULL, NULL,
+                                  GetModuleHandleW(NULL),
+                                  NULL);
+    if (!window)
+    {
+        _glfwInputError(GLFW_PLATFORM_ERROR,
+                        "Win32: Failed to create helper window");
+        return NULL;
+    }
+
+    return window;
 }
 
 
@@ -327,30 +364,32 @@ int _glfwPlatformInit(void)
     SystemParametersInfoW(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, UIntToPtr(0),
                           SPIF_SENDCHANGE);
 
-    if (!initLibraries())
-        return GL_FALSE;
+    if (!loadLibraries())
+        return GLFW_FALSE;
 
     createKeyTables();
 
-    if (_glfw_SetProcessDPIAware)
+    if (_glfw_SetProcessDPIAwareness)
+        _glfw_SetProcessDPIAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+    else if (_glfw_SetProcessDPIAware)
         _glfw_SetProcessDPIAware();
 
-#ifdef __BORLANDC__
-    // With the Borland C++ compiler, we want to disable FPU exceptions
-    // (this is recommended for OpenGL applications under Windows)
-    _control87(MCW_EM, MCW_EM);
-#endif
-
     if (!_glfwRegisterWindowClass())
-        return GL_FALSE;
+        return GLFW_FALSE;
+
+    _glfw.win32.helperWindow = createHelperWindow();
+    if (!_glfw.win32.helperWindow)
+        return GLFW_FALSE;
+
+    _glfwPlatformPollEvents();
 
     if (!_glfwInitContextAPI())
-        return GL_FALSE;
+        return GLFW_FALSE;
 
     _glfwInitTimer();
     _glfwInitJoysticks();
 
-    return GL_TRUE;
+    return GLFW_TRUE;
 }
 
 void _glfwPlatformTerminate(void)
@@ -366,12 +405,16 @@ void _glfwPlatformTerminate(void)
 
     _glfwTerminateJoysticks();
     _glfwTerminateContextAPI();
-    terminateLibraries();
+
+    if (_glfw.win32.helperWindow)
+        DestroyWindow(_glfw.win32.helperWindow);
+
+    freeLibraries();
 }
 
 const char* _glfwPlatformGetVersionString(void)
 {
-    const char* version = _GLFW_VERSION_NUMBER " Win32"
+    return _GLFW_VERSION_NUMBER " Win32"
 #if defined(_GLFW_WGL)
         " WGL"
 #elif defined(_GLFW_EGL)
@@ -381,14 +424,13 @@ const char* _glfwPlatformGetVersionString(void)
         " MinGW"
 #elif defined(_MSC_VER)
         " VisualC"
-#elif defined(__BORLANDC__)
-        " BorlandC"
+#endif
+#if defined(_GLFW_USE_HYBRID_HPG) || defined(_GLFW_USE_OPTIMUS_HPG)
+        " hybrid-GPU"
 #endif
 #if defined(_GLFW_BUILD_DLL)
         " DLL"
 #endif
         ;
-
-    return version;
 }
 

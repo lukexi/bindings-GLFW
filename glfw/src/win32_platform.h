@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.1 Win32 - www.glfw.org
+// GLFW 3.2 Win32 - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2002-2006 Marcus Geelnard
 // Copyright (c) 2006-2010 Camilla Berglund <elmindreda@elmindreda.org>
@@ -25,9 +25,8 @@
 //
 //========================================================================
 
-#ifndef _win32_platform_h_
-#define _win32_platform_h_
-
+#ifndef _glfw3_win32_platform_h_
+#define _glfw3_win32_platform_h_
 
 // We don't need all the fancy stuff
 #ifndef NOMINMAX
@@ -71,9 +70,7 @@
  #define strdup _strdup
 #endif
 
-
 // HACK: Define macros that some older windows.h variants don't
-
 #ifndef WM_MOUSEHWHEEL
  #define WM_MOUSEHWHEEL 0x020E
 #endif
@@ -89,6 +86,12 @@
 #ifndef UNICODE_NOCHAR
  #define UNICODE_NOCHAR 0xFFFF
 #endif
+#ifndef WM_DPICHANGED
+ #define WM_DPICHANGED 0x02E0
+#endif
+#ifndef GET_XBUTTON_WPARAM
+ #define GET_XBUTTON_WPARAM(w) (HIWORD(w))
+#endif
 
 #if WINVER < 0x0601
 typedef struct tagCHANGEFILTERSTRUCT
@@ -102,6 +105,14 @@ typedef struct tagCHANGEFILTERSTRUCT
 #endif
 #endif /*Windows 7*/
 
+#ifndef DPI_ENUMS_DECLARED
+typedef enum PROCESS_DPI_AWARENESS
+{
+    PROCESS_DPI_UNAWARE = 0,
+    PROCESS_SYSTEM_DPI_AWARE = 1,
+    PROCESS_PER_MONITOR_DPI_AWARE = 2
+} PROCESS_DPI_AWARENESS;
+#endif /*DPI_ENUMS_DECLARED*/
 
 // winmm.dll function pointer typedefs
 typedef MMRESULT (WINAPI * JOYGETDEVCAPS_T)(UINT,LPJOYCAPS,UINT);
@@ -121,15 +132,16 @@ typedef BOOL (WINAPI * CHANGEWINDOWMESSAGEFILTEREX_T)(HWND,UINT,DWORD,PCHANGEFIL
 
 // dwmapi.dll function pointer typedefs
 typedef HRESULT (WINAPI * DWMISCOMPOSITIONENABLED_T)(BOOL*);
+typedef HRESULT (WINAPI * DWMFLUSH_T)(VOID);
 #define _glfw_DwmIsCompositionEnabled _glfw.win32.dwmapi.DwmIsCompositionEnabled
+#define _glfw_DwmFlush _glfw.win32.dwmapi.DwmFlush
 
-
-#define _GLFW_RECREATION_NOT_NEEDED 0
-#define _GLFW_RECREATION_REQUIRED   1
-#define _GLFW_RECREATION_IMPOSSIBLE 2
-
+// shcore.dll function pointer typedefs
+typedef HRESULT (WINAPI * SETPROCESSDPIAWARENESS_T)(PROCESS_DPI_AWARENESS);
+#define _glfw_SetProcessDPIAwareness _glfw.win32.shcore.SetProcessDPIAwareness
 
 #include "win32_tls.h"
+#include "winmm_joystick.h"
 
 #if defined(_GLFW_WGL)
  #include "wgl_context.h"
@@ -141,7 +153,7 @@ typedef HRESULT (WINAPI * DWMISCOMPOSITIONENABLED_T)(BOOL*);
  #error "No supported context creation API selected"
 #endif
 
-#include "winmm_joystick.h"
+#define _GLFW_WNDCLASSNAME L"GLFW30"
 
 #define _GLFW_PLATFORM_WINDOW_STATE         _GLFWwindowWin32  win32
 #define _GLFW_PLATFORM_LIBRARY_WINDOW_STATE _GLFWlibraryWin32 win32
@@ -155,11 +167,13 @@ typedef HRESULT (WINAPI * DWMISCOMPOSITIONENABLED_T)(BOOL*);
 typedef struct _GLFWwindowWin32
 {
     HWND                handle;
-    DWORD               dwStyle;
-    DWORD               dwExStyle;
 
-    GLboolean           cursorInside;
-    GLboolean           iconified;
+    GLFWbool            cursorTracked;
+    GLFWbool            iconified;
+
+    int                 minwidth, minheight;
+    int                 maxwidth, maxheight;
+    int                 numer, denom;
 
     // The last received cursor position, regardless of source
     int                 cursorPosX, cursorPosY;
@@ -171,9 +185,12 @@ typedef struct _GLFWwindowWin32
 //
 typedef struct _GLFWlibraryWin32
 {
+    HWND                helperWindow;
     DWORD               foregroundLockTimeout;
     char*               clipboardString;
+    char                keyName[64];
     short int           publicKeys[512];
+    short int           nativeKeys[GLFW_KEY_LAST + 1];
 
     // winmm.dll
     struct {
@@ -195,7 +212,14 @@ typedef struct _GLFWlibraryWin32
     struct {
         HINSTANCE       instance;
         DWMISCOMPOSITIONENABLED_T DwmIsCompositionEnabled;
+        DWMFLUSH_T      DwmFlush;
     } dwmapi;
+
+    // shcore.dll
+    struct {
+        HINSTANCE       instance;
+        SETPROCESSDPIAWARENESS_T SetProcessDPIAwareness;
+    } shcore;
 
 } _GLFWlibraryWin32;
 
@@ -209,7 +233,8 @@ typedef struct _GLFWmonitorWin32
     WCHAR               displayName[32];
     char                publicAdapterName[64];
     char                publicDisplayName[64];
-    GLboolean           modeChanged;
+    GLFWbool            modesPruned;
+    GLFWbool            modeChanged;
 
 } _GLFWmonitorWin32;
 
@@ -227,14 +252,14 @@ typedef struct _GLFWcursorWin32
 //
 typedef struct _GLFWtimeWin32
 {
-    GLboolean           hasPC;
+    GLFWbool            hasPC;
     double              resolution;
     unsigned __int64    base;
 
 } _GLFWtimeWin32;
 
 
-GLboolean _glfwRegisterWindowClass(void);
+GLFWbool _glfwRegisterWindowClass(void);
 void _glfwUnregisterWindowClass(void);
 
 BOOL _glfwIsCompositionEnabled(void);
@@ -244,7 +269,7 @@ char* _glfwCreateUTF8FromWideString(const WCHAR* source);
 
 void _glfwInitTimer(void);
 
-GLboolean _glfwSetVideoMode(_GLFWmonitor* monitor, const GLFWvidmode* desired);
+GLFWbool _glfwSetVideoMode(_GLFWmonitor* monitor, const GLFWvidmode* desired);
 void _glfwRestoreVideoMode(_GLFWmonitor* monitor);
 
-#endif // _win32_platform_h_
+#endif // _glfw3_win32_platform_h_

@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.1 POSIX - www.glfw.org
+// GLFW 3.2 POSIX - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2002-2006 Marcus Geelnard
 // Copyright (c) 2006-2010 Camilla Berglund <elmindreda@elmindreda.org>
@@ -25,8 +25,8 @@
 //
 //========================================================================
 
-#ifndef _posix_tls_h_
-#define _posix_tls_h_
+#ifndef _glfw3_posix_tls_h_
+#define _glfw3_posix_tls_h_
 
 #include <pthread.h>
 
@@ -37,13 +37,14 @@
 //
 typedef struct _GLFWtlsPOSIX
 {
+    GLFWbool        allocated;
     pthread_key_t   context;
 
 } _GLFWtlsPOSIX;
 
 
-int _glfwInitTLS(void);
-void _glfwTerminateTLS(void);
-void _glfwSetCurrentContext(_GLFWwindow* context);
+GLFWbool _glfwCreateContextTLS(void);
+void _glfwDestroyContextTLS(void);
+void _glfwSetContextTLS(_GLFWwindow* context);
 
-#endif // _posix_tls_h_
+#endif // _glfw3_posix_tls_h_

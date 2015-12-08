@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.1 OS X - www.glfw.org
+// GLFW 3.2 OS X - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2009-2010 Camilla Berglund <elmindreda@elmindreda.org>
 //
@@ -24,8 +24,8 @@
 //
 //========================================================================
 
-#ifndef _nsgl_context_h_
-#define _nsgl_context_h_
+#ifndef _glfw3_nsgl_context_h_
+#define _glfw3_nsgl_context_h_
 
 #define _GLFW_PLATFORM_FBCONFIG
 #define _GLFW_PLATFORM_CONTEXT_STATE            _GLFWcontextNSGL nsgl
@@ -37,7 +37,7 @@
 typedef struct _GLFWcontextNSGL
 {
     id           pixelFormat;
-    id	         context;
+    id	         object;
 
 } _GLFWcontextNSGL;
 
@@ -59,4 +59,4 @@ int _glfwCreateContext(_GLFWwindow* window,
                        const _GLFWfbconfig* fbconfig);
 void _glfwDestroyContext(_GLFWwindow* window);
 
-#endif // _nsgl_context_h_
+#endif // _glfw3_nsgl_context_h_

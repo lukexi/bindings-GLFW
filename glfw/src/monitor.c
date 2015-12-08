@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.1 - www.glfw.org
+// GLFW 3.2 - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2002-2006 Marcus Geelnard
 // Copyright (c) 2006-2010 Camilla Berglund <elmindreda@elmindreda.org>
@@ -28,14 +28,11 @@
 #include "internal.h"
 
 #include <math.h>
+#include <float.h>
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
 
-#if defined(_MSC_VER) || _WIN64
-#include <malloc.h>
-#define strdup _strdup
-#endif
 
 // Lexical comparison function for GLFW video modes, used by qsort
 //
@@ -63,17 +60,17 @@ static int compareVideoModes(const void* firstPtr, const void* secondPtr)
 
 // Retrieves the available modes for the specified monitor
 //
-static int refreshVideoModes(_GLFWmonitor* monitor)
+static GLFWbool refreshVideoModes(_GLFWmonitor* monitor)
 {
     int modeCount;
     GLFWvidmode* modes;
 
     if (monitor->modes)
-        return GL_TRUE;
+        return GLFW_TRUE;
 
     modes = _glfwPlatformGetVideoModes(monitor, &modeCount);
     if (!modes)
-        return GL_FALSE;
+        return GLFW_FALSE;
 
     qsort(modes, modeCount, sizeof(GLFWvidmode), compareVideoModes);
 
@@ -81,7 +78,7 @@ static int refreshVideoModes(_GLFWmonitor* monitor)
     monitor->modes = modes;
     monitor->modeCount = modeCount;
 
-    return GL_TRUE;
+    return GLFW_TRUE;
 }
 
 
@@ -308,6 +305,10 @@ GLFWAPI GLFWmonitor** glfwGetMonitors(int* count)
 GLFWAPI GLFWmonitor* glfwGetPrimaryMonitor(void)
 {
     _GLFW_REQUIRE_INIT_OR_RETURN(NULL);
+
+    if (!_glfw.monitorCount)
+        return NULL;
+
     return (GLFWmonitor*) _glfw.monitors[0];
 }
 
@@ -389,10 +390,9 @@ GLFWAPI void glfwSetGamma(GLFWmonitor* handle, float gamma)
 
     _GLFW_REQUIRE_INIT();
 
-    if (gamma <= 0.f)
+    if (gamma != gamma || gamma <= 0.f || gamma > FLT_MAX)
     {
-        _glfwInputError(GLFW_INVALID_VALUE,
-                        "Gamma value must be greater than zero");
+        _glfwInputError(GLFW_INVALID_VALUE, "Invalid gamma value");
         return;
     }
 

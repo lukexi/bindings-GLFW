@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.1 POSIX - www.glfw.org
+// GLFW 3.2 POSIX - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2002-2006 Marcus Geelnard
 // Copyright (c) 2006-2010 Camilla Berglund <elmindreda@elmindreda.org>
@@ -25,8 +25,8 @@
 //
 //========================================================================
 
-#ifndef _posix_time_h_
-#define _posix_time_h_
+#ifndef _glfw3_posix_time_h_
+#define _glfw3_posix_time_h_
 
 #define _GLFW_PLATFORM_LIBRARY_TIME_STATE _GLFWtimePOSIX posix_time
 
@@ -37,7 +37,7 @@
 //
 typedef struct _GLFWtimePOSIX
 {
-    GLboolean   monotonic;
+    GLFWbool    monotonic;
     double      resolution;
     uint64_t    base;
 
@@ -46,4 +46,4 @@ typedef struct _GLFWtimePOSIX
 
 void _glfwInitTimer(void);
 
-#endif // _posix_time_h_
+#endif // _glfw3_posix_time_h_

@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.1 Wayland - www.glfw.org
+// GLFW 3.2 Wayland - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2014 Jonas Ådahl <jadahl@gmail.com>
 //
@@ -24,22 +24,22 @@
 //
 //========================================================================
 
-#ifndef _wayland_platform_h_
-#define _wayland_platform_h_
-
+#ifndef _glfw3_wayland_platform_h_
+#define _glfw3_wayland_platform_h_
 
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
+
+#include "posix_tls.h"
+#include "posix_time.h"
+#include "linux_joystick.h"
+#include "xkb_unicode.h"
 
 #if defined(_GLFW_EGL)
  #include "egl_context.h"
 #else
  #error "The Wayland backend depends on EGL platform support"
 #endif
-
-#include "posix_tls.h"
-#include "posix_time.h"
-#include "linux_joystick.h"
 
 #define _GLFW_EGL_NATIVE_WINDOW         window->wl.native
 #define _GLFW_EGL_NATIVE_DISPLAY        _glfw.wl.display
@@ -60,12 +60,13 @@ typedef struct _GLFWvidmodeWayland _GLFWvidmodeWayland;
 typedef struct _GLFWwindowWayland
 {
     int                         width, height;
-    GLboolean                   visible;
+    GLFWbool                    visible;
     struct wl_surface*          surface;
     struct wl_egl_window*       native;
     struct wl_shell_surface*    shell_surface;
     struct wl_callback*         callback;
     _GLFWcursor*                currentCursor;
+    double                      cursorPosX, cursorPosY;
 } _GLFWwindowWayland;
 
 
@@ -83,13 +84,14 @@ typedef struct _GLFWlibraryWayland
     struct wl_keyboard*         keyboard;
 
     struct wl_cursor_theme*     cursorTheme;
-    struct wl_cursor*           defaultCursor;
     struct wl_surface*          cursorSurface;
     uint32_t                    pointerSerial;
 
     _GLFWmonitor**              monitors;
     int                         monitorsCount;
     int                         monitorsSize;
+
+    short int                   publicKeys[256];
 
     struct {
         struct xkb_context*     context;
@@ -117,7 +119,7 @@ typedef struct _GLFWmonitorWayland
     _GLFWvidmodeWayland*        modes;
     int                         modesCount;
     int                         modesSize;
-    GLboolean                   done;
+    GLFWbool                    done;
 
     int                         x;
     int                         y;
@@ -129,6 +131,7 @@ typedef struct _GLFWmonitorWayland
 //
 typedef struct _GLFWcursorWayland
 {
+    struct wl_cursor_image*     image;
     struct wl_buffer*           buffer;
     int                         width, height;
     int                         xhot, yhot;
@@ -137,4 +140,4 @@ typedef struct _GLFWcursorWayland
 
 void _glfwAddOutput(uint32_t name, uint32_t version);
 
-#endif // _wayland_platform_h_
+#endif // _glfw3_wayland_platform_h_

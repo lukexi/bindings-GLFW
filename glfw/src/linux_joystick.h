@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.1 Linux - www.glfw.org
+// GLFW 3.2 Linux - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2014 Jonas Ådahl <jadahl@gmail.com>
 //
@@ -24,8 +24,8 @@
 //
 //========================================================================
 
-#ifndef _linux_joystick_h_
-#define _linux_joystick_h_
+#ifndef _glfw3_linux_joystick_h_
+#define _glfw3_linux_joystick_h_
 
 #include <regex.h>
 
@@ -60,4 +60,4 @@ typedef struct _GLFWjoystickLinux
 int _glfwInitJoysticks(void);
 void _glfwTerminateJoysticks(void);
 
-#endif // _linux_joystick_h_
+#endif // _glfw3_linux_joystick_h_
